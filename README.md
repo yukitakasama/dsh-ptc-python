@@ -317,9 +317,49 @@ npm test        # 53 个测试
 
 > 运行期只需要 Node 内置模块 + 一个 CPython 解释器。测试额外需要 `node_modules/` 中有 `yaml`，以及（用于 seam 一致性断言的）`@deepseek-ai/dsh-code-runtime`。seam 包**故意不是依赖**——profile 绝不能自己解析一份核心包，所以后端用 `ctx.provide('codeRuntime', ...)` 注册、完全不 import 它。检测到 seam 包时才运行一致性断言，检测不到就静默跳过。
 
+## 与官方模式的关系
+
+本插件**不改变**任何官方模式的行为：
+
+| 会话选择 | 结果 |
+| --- | --- |
+| **原生（native）** | 完全不受影响。`run_code` 不出现，工具照旧逐个直接调用。 |
+| 其他预设 | 上层 tool-presentation 行照常工作，不受影响。 |
+| **PTC Python 模式** | 只调用 `run_code`，程序用 Python，工具以 `await tools.<name>(args)` 绑定触达。 |
+
+插件替换的是**运行时后端**（`code-runtime` 行），不是呈现方式：呈现方式始终由预设里的 `tool-presentation` 行决定，官方预设说的 `native` / `ptc` 该怎样还怎样。
+
+### 但 PTC 的两种语言无法在同一进程共存
+
+**整篇部署只有一门 `run_code` 语言**：装了本插件，TS 版 PTC 就没有了；不装，Python 版 PTC 就没有。这不是本插件的偷懒，而是 seam 当前的设计边界，理由在上游代码里写得很明白：
+
+```js
+// @deepseek-ai/dsh-tools，requireCodeRuntime 的文档注释
+// Assembly and run_code execution read separately, so the language is not
+// bound to a request. Harmless while one published backend exists — both
+// reads return the same flavor — but a reload that swapped in a second
+// language between them would hand a program written against one SDK to the
+// other. Binding it is deferred until a second backend ships (the first
+// point it is testable).
+```
+
+具体卡在三处：
+
+1. **`ctx.codeRuntime` 是宿主平面单例**。`dsh-tools` 通过 `this.ctx.get("codeRuntime")` 取它——这里的 `this.ctx` 是**工具注册表自己的**上下文，而注册表在 base 层挂载（`id: tools`），不能在预设里再挂一份（它的文档注释：*"The tool registry itself stays on the host plane … it cannot move into a preset"*）。所以**每个会话看不到不同的 runtime**，也没法按 scope 分派；
+2. **`run_code` 是保留名**，注册表明确拒绝注册或遮蔽它（*"tool name "run_code" is reserved for the PTC mode presentation transport and cannot be registered or shadowed"*），所以没法给某个预设单独塞一个自己的 `run_code`；
+3. **语言在 `runtime.language` 上**，是加载时那个实现的固定属性；而 `dsh-tools` 在组装提示词、发 `run_code` schema、执行程序这三处**分开读同一个 runtime**——上游注释承认这正是「第二个后端出现时」才需要绑定的问题。
+
+**所以唯一的可行形态是：一门语言一次部署，且必须显式替换 `code-runtime` 行。** 本插件采用的就是这个形态。若将来上游把语言绑定到请求（上面注释里预留的那一步），本插件的后端不用改——它已经是一个标准的 `CodeRuntime` 实现。
+
+### 为什么必须替换全局行，而不能加在自己的 realm 里
+
+预设的服务默认必须放在 `isolate` realm 里（否则 `dsh-agent-presets` 会拒绝：*"a preset service must sit behind an isolate realm or move to the host plane"*）。理论上本插件可以把 Python runtime 放进 realm，让预设内的行解析到它——**但工具注册表在 realm 之外**，它读的是 base 层那份 runtime，所以那样做只会让提示词按 Python 渲染、实际却把程序交给 TS 执行，比不能共存更糟。因此只能替换 base 行。
+
+替换 `code-runtime` 行是 profile 层的正当机制：profile 补丁本来就是用来覆盖 base 层行的。若同时装了另一个也替换该行的插件，**两者会冲突**（后加载的生效），这一点无解。
+
 ## 限制
 
-- **一个进程只有一门语言**：`ctx.codeRuntime` 是宿主平面单例，本插件通过**替换** `code-runtime` 行来安装 Python 后端。装了本插件，所有 PTC 模式会话都用 Python；不能同时提供一个 TypeScript PTC 预设；
+- **一个进程只有一门语言**：`ctx.codeRuntime` 是宿主平面单例，本插件通过**替换** `code-runtime` 行来安装 Python 后端。装了本插件，所有 PTC 模式会话都用 Python；不能同时提供一个 TypeScript PTC 预设（原因与上游代码证据见[与官方模式的关系](#与官方模式的关系)）；
 - **CPU 计量依赖外部命令**：Windows 需要 `tasklist`、POSIX 需要 `ps`。取不到进程 CPU 时间时只告警一次，运行仍由 `maxWallMs` 兜底；
 - **POSIX 资源限制在 Windows 无效**：`resource` 模块不存在，`cpuSeconds` / `addressSpaceBytes` 被忽略（已在子进程里显式跳过并注释）；
 - **程序的 stdin 是立即 EOF**：子进程装上了一个立刻返回 EOF 的 `sys.stdin`，这样 `input()` 会立刻抛 `EOFError` 而不是挂到墙钟上限。程序要接触外部世界请走工具绑定；

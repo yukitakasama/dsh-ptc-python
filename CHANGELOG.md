@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Nothing yet.
+### Documented
+
+- **Coexistence with the shipped TypeScript PTC mode is not possible, and this
+  is an upstream boundary rather than a plugin choice.** `@deepseek-ai/dsh-tools`
+  reads the runtime through its own registry context (`this.ctx.get("codeRuntime")`),
+  and that registry is mounted on the host plane where it cannot be re-mounted
+  per preset; `run_code` is a reserved name that cannot be registered or shadowed
+  per scope; and the runtime's `language` is a fixed property of whichever
+  implementation is loaded, read separately at prompt assembly and at execution.
+  Upstream's own note on `requireCodeRuntime` states this outright: the language
+  is deliberately not bound to a request, "harmless while one published backend
+  exists", with binding "deferred until a second backend ships". So one language
+  serves a deployment, and replacing the `code-runtime` row is the only
+  sanctioned mechanism. Native mode is unaffected either way: the plugin
+  replaces a runtime backend, not a presentation.
 
 ## [0.1.1] - 2026-09-19
 

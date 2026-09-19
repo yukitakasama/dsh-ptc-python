@@ -198,3 +198,4 @@ npm test        # node --test "tests/*.test.js"
 7. **`lib/index.js` 与 `lib/runtime.js` 不能合并**。合并会导致同名服务被注册两次。
 8. **`isoFlags` 默认值在 schema 与 patch 里必须一致**（都是 `['-I']`），否则 `preset.test.js` 失败。
 9. **不要给插件加运行时 npm 依赖**。配置校验用 Standard Schema 自己实现就够了；加依赖会在干净 profile 上以 `ERR_MODULE_NOT_FOUND` 加载失败（原因见第四节「依赖注意」）。
+10. **不要试图让 TS/Py 两种 PTC 共存**。`dsh-tools` 用**注册表自己的** `ctx` 读 `codeRuntime`（`this.ctx.get("codeRuntime")`），而注册表在 base 层、不能在预设里再挂一份；`run_code` 是保留名不可按 scope 注册；`runtime.language` 在组装提示词与执行程序两处**分开读同一个运行时**。上游 `requireCodeRuntime` 的注释明确写着语言「deliberately not bound to a request」，绑定要等第二个后端出现才做。所以「一门语言一次部署 + 替换 `code-runtime` 行」是唯一被支持的形态。详见 README「与官方模式的关系」。
