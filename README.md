@@ -90,8 +90,11 @@ dsh plugin --profile web add github:yukitakasama/dsh-ptc-python
 **锁定版本 / 分支 / 提交**：
 
 ```bash
-dsh plugin --profile web add github:yukitakasama/dsh-ptc-python#v0.1.0
+dsh plugin --profile web add github:yukitakasama/dsh-ptc-python#v0.1.1
 ```
+
+> 不要锁 `#v0.1.0`：那个 tag 早于 0.1.1 的加载失败修复，在干净 profile 上会以
+> `ERR_MODULE_NOT_FOUND` 起不来。用 `v0.1.1` 或更新。
 
 **更新**：
 
