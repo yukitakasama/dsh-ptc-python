@@ -349,6 +349,21 @@ npm test        # 53 个测试
 2. **`run_code` 是保留名**，注册表明确拒绝注册或遮蔽它（*"tool name "run_code" is reserved for the PTC mode presentation transport and cannot be registered or shadowed"*），所以没法给某个预设单独塞一个自己的 `run_code`；
 3. **语言在 `runtime.language` 上**，是加载时那个实现的固定属性；而 `dsh-tools` 在组装提示词、发 `run_code` schema、执行程序这三处**分开读同一个 runtime**——上游注释承认这正是「第二个后端出现时」才需要绑定的问题。
 
+**最后一处才是真正的拦路石**，值得说细一点，因为它决定了要改哪里：`run_code` 的 schema 里那两个语言相关字段是通过**无 scope 的闭包**读出来的——
+
+```ts
+// @deepseek-ai/dsh-tools/src/index.ts:914-923
+private requireCodeTransport(): ToolDefinition {
+    this.ptcTransport ??= createRunCodeTool(this, {
+      requireRuntime: () => this.requireCodeRuntime(this.defaultMode),
+      peekRuntime: () => this.ctx.get('codeRuntime'),
+      ...
+```
+
+`createRunCodeTool` 是**单例**（`this.ptcTransport ??=`），只在 schema getter 里调用那两个闭包，而 `CodeRuntime.language` 是 `abstract readonly language: string`——静态定值。所以**模型看到的 `run_code` schema 与 SDK 段落是按一门语言固定的**，不可能按会话变。
+
+与之相对，**执行阶段其实已经拿得到调用方**：`ToolExecutionInput.agent?: Agent`。也就是说这个功能缺的不是执行期信息，而是「schema 生成也按 scope 选语言」这一步——上游注释里那句 *"Binding it is deferred until a second backend ships"* 说的就是它。要补这一步，改动落在 DSH 核心的 `dsh-tools`（以及让 runtime 解析按 scope 进行），**没有任何预设或插件层的写法能绕过**。
+
 **所以唯一的可行形态是：一门语言一次部署，且必须显式替换 `code-runtime` 行。** 本插件采用的就是这个形态。若将来上游把语言绑定到请求（上面注释里预留的那一步），本插件的后端不用改——它已经是一个标准的 `CodeRuntime` 实现。
 
 ### 为什么必须替换全局行，而不能加在自己的 realm 里
