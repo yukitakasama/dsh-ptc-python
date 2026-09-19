@@ -1,0 +1,72 @@
+# dsh-ptc-python bundle patch: installs the `ptc-python` agent preset and mounts
+# the CPython code runtime that preset's `mode: ptc` row waits for.
+#
+# Applied as a profile bundle layer (the `dsh.bundle.patch` manifest field);
+# activate with:
+#
+#   dsh plugin --profile web add github:yukitakasama/dsh-ptc-python
+#
+# Or, for a specific dsh instance, point DSH_HOME at that instance first
+# (do NOT use `--dir`: dsh forwards it to pnpm, where it means "working
+# directory", not "dsh home"):
+#
+#   DSH_HOME=/path/to/instance/.dsh dsh plugin --profile web add github:yukitakasama/dsh-ptc-python
+#
+# Two rows, two responsibilities: the `code-runtime` row mounts the service, and
+# the inserted `dsh-ptc-python` row copies the packaged preset into the user
+# preset root (${DSH_HOME:-~/.dsh}/.agent-presets) on boot, unless it is already
+# installed. Pass `force: true` on that row to overwrite the preset files.
+
+# ── the code runtime the preset needs ───────────────────────────────────────
+#
+# `ctx.codeRuntime` is a HOST-plane service and one process serves ONE language,
+# so this row REPLACES the runtime the web bundle mounts rather than adding a
+# second one. Reusing the shipped entry id (`code-runtime`) performs the swap: a
+# patch replaces the targeted row's whole `name` and `config`, so the TypeScript
+# worker backend gives way to this Python one.
+#
+# The preset's `tool-presentation` row injects `codeRuntime`; with this row
+# mounted that row resolves, and because the runtime reports
+# `language: 'python'`, `dsh-tools` PTC mode emits the Python `run_code` schema
+# and the Python SDK block instead of the TypeScript ones.
+#
+# Every cap is a validated config field — change them here, not in code. An
+# absent `config` block takes the schema's own defaults.
+- id: code-runtime
+  name: '@yukitakasama/dsh-ptc-python/runtime'
+  config:
+    # Empty means "discover it": DSH_PYTHON, then python/python3 on PATH, then
+    # the conventional Windows install locations. Set an ABSOLUTE path here (or
+    # the DSH_PYTHON environment variable) to pin one interpreter.
+    pythonPath: ''
+    # `-I` isolates the child: no user site-packages, no PYTHONPATH/PYTHONHOME.
+    isoFlags:
+      - '-I'
+    # Wall-clock ceiling for one program, in milliseconds.
+    maxWallMs: 300000
+    # Consumed-CPU budget in milliseconds; 0 disables CPU metering and leaves
+    # only the wall clock. Sampling needs `tasklist` (Windows) or `ps` (POSIX);
+    # where neither is usable the run says so once and relies on maxWallMs.
+    maxComputeMs: 0
+    # Combined cap for the captured logs plus the completion value, in bytes.
+    maxOutputBytes: 67108864
+    # Cap on a single inbound frame before it is parsed.
+    maxFrameBytes: 8388608
+    # POSIX-only child limits (ignored where the `resource` module is absent).
+    cpuSeconds: 60
+    addressSpaceBytes: 2147483648
+    # The child's own log ledger budget.
+    maxLogBytes: 1048576
+    # Byte cap for the rendered completion value.
+    maxValueBytes: 4194304
+    # How long the child may take to acknowledge a boot frame.
+    bootTimeoutMs: 30000
+
+# ── the preset installer ────────────────────────────────────────────────────
+#
+# This row's node half copies the packaged `ptc-python` agent preset into the
+# user preset root on boot. It registers no service, so it cannot collide with
+# the runtime row above.
+- insert:
+    - id: dsh-ptc-python
+      name: '@yukitakasama/dsh-ptc-python'

@@ -1,0 +1,3 @@
+name: PTC Python 模式
+description: Programmatic Tool Calling：模型只调用 run_code，一次写一段 Python 程序，把工具当作 `await tools.<name>(args)` 绑定调用，只把程序打印与返回的内容带回对话。工具表面与标准模式一致。
+order: 3

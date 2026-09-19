@@ -1,0 +1,75 @@
+{
+  "name": "@yukitakasama/dsh-ptc-python",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin: adds a Python Programmatic Tool Calling preset. Ships a CPython subprocess code-runtime backend plus the 'ptc-python' agent preset, so the model writes one Python program that calls its tools as `await tools.<name>(args)` bindings.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./runtime": {
+      "default": "./lib/runtime.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "py",
+    "agent-presets",
+    "cordis.patch.yml",
+    "install.mjs",
+    "README.md",
+    "CHANGELOG.md",
+    "PROJECT_STRUCTURE.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "check": "node --check lib/index.js && node --check lib/runtime.js && node --check lib/python-runtime.js && node --check lib/json-wire.js && node --check install.mjs && python -m py_compile py/dsh_bootstrap.py",
+    "test": "node --test \"tests/*.test.js\"",
+    "prepublishOnly": "npm run check && npm test"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "agent-preset",
+    "ptc",
+    "programmatic-tool-calling",
+    "run_code",
+    "python",
+    "code-runtime",
+    "cpython"
+  ],
+  "license": "MIT",
+  "author": "yukitakasama",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yukitakasama/dsh-ptc-python.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yukitakasama/dsh-ptc-python/issues"
+  },
+  "homepage": "https://github.com/yukitakasama/dsh-ptc-python#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh": ">=0.1.5-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh": {
+      "optional": true
+    }
+  }
+}

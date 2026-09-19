@@ -1,0 +1,15 @@
+# Build and run residue
+node_modules/
+*.log
+
+# Python bytecode caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
