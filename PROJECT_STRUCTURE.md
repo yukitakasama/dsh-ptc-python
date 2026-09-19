@@ -173,6 +173,8 @@ npm test        # node --test "tests/*.test.js"
 
 **依赖注意**：`node_modules/` 需要有 `@deepseek-ai/schemastery`、`yaml`，以及（可选，供一致性断言用）`@deepseek-ai/dsh-code-runtime`。seam 包**故意不是依赖**：profile 绝不能自己解析一份核心包，所以后端用 `ctx.provide` 注册、完全不 import 它；一致性断言检测不到 seam 包时会静默跳过。
 
+**为什么 `@deepseek-ai/schemastery` 是 peer 而不是 dependency**：profile 用 `nodeLinker: hoisted` 安装，`@deepseek-ai/schemastery` 会被提升到 `<profile>/node_modules/` 一层，插件从 `<profile>/node_modules/@yukitakasama/dsh-ptc-python/` 向上查找就能解析到。声明成 `dependencies` 会让 pnpm 在插件自己的 `node_modules/` 里再嵌一份副本——而项目的 `.npmrc` 明确要求核心包只能来自 CLI 依赖树。生态里的同层插件（如 `@anionex/dsh-turn-rewind`）同样把它列为 peer。`peerDependenciesMeta.optional` 则避免 `auto-install-peers=false` 下被误判为缺失。
+
 ---
 
 ## 六、已知的坑（改代码前务必读）

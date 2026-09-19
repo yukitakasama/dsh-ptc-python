@@ -61,14 +61,15 @@
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.2"
-  },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.1.5-rc.1"
+    "@deepseek-ai/dsh": ">=0.1.5-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
       "optional": true
     }
   }

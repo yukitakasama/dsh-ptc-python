@@ -78,6 +78,13 @@ agent preset, distributed as a GitHub-installable dsh plugin.
   `codeRuntime` through `ctx.provide` and restates the seam's validation tables.
   A conformance test compares that restatement against the published exports
   whenever the seam package is resolvable, and skips when it is not.
+- **`@deepseek-ai/schemastery` is a peer dependency, not a dependency.** A
+  hoisted-layout profile already carries it at `<profile>/node_modules/`, one
+  level above the plugin, so ordinary upward resolution finds it — the same way
+  the ecosystem's other plugins at this layer declare it. Declaring it as a
+  dependency would make pnpm nest a second copy inside the plugin, which the
+  profile's `.npmrc` forbids for core packages. `peerDependenciesMeta.optional`
+  keeps `auto-install-peers=false` from reading it as a missing requirement.
 - **The runtime row reuses the shipped `code-runtime` entry id.** Patching that
   id replaces the row's whole `name` and `config`, which is how one process ends
   up serving exactly one PTC language — `ctx.provide` would refuse a second

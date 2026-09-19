@@ -161,6 +161,7 @@ node install.mjs
 | dsh | `>= 0.1.5-rc.1`（需要 `@deepseek-ai/dsh-agent-tool-presentation`） |
 | Node.js | `>= 20` |
 | CPython | **3.8+**，且能被找到 |
+| `@deepseek-ai/schemastery` | `^3.18.2`；声明为 peerDependency，profile 用 hoisted 布局安装时已在 `<profile>/node_modules/` 一层，无需额外操作 |
 
 Python 解释器的查找顺序（`pythonPath` 为空时）：
 
