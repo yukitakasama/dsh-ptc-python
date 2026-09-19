@@ -161,7 +161,8 @@ node install.mjs
 | dsh | `>= 0.1.5-rc.1`（需要 `@deepseek-ai/dsh-agent-tool-presentation`） |
 | Node.js | `>= 20` |
 | CPython | **3.8+**，且能被找到 |
-| `@deepseek-ai/schemastery` | `^3.18.2`；声明为 peerDependency，profile 用 hoisted 布局安装时已在 `<profile>/node_modules/` 一层，无需额外操作 |
+
+**零运行时依赖**：插件不 import 任何 npm 包，配置校验用 cordis 实际消费的 [Standard Schema](https://standardschema.dev) 接口自己实现（见[实现要点](#为什么没有运行时依赖)）。
 
 Python 解释器的查找顺序（`pythonPath` 为空时）：
 
@@ -224,6 +225,26 @@ return total
 ## 实现要点
 
 这一节记录「为什么是这个形状」，改动代码前值得先读。
+
+### 为什么没有运行时依赖
+
+cordis 解析插件配置走的不是某个 schema 库的私有 API，而是 **Standard Schema v1**：
+
+```js
+// cordis 的 resolveConfig 内部
+const result = runtime.Config['~standard'].validate(rawConfig)
+if (result.issues) throw new ValidationError(result.issues)
+return result.value
+```
+
+所以 `Config` 只要是「暴露 `~standard.validate` 的对象」就够了，不必来自 schema 库。本插件按这个接口自己实现了 `lib/config-schema.js`，于是**整个插件不 import 任何 npm 包**。
+
+这不是洁癖，是因为替代方案都更糟：
+
+- **把 `@deepseek-ai/schemastery` 声明为 peer**：它确实是生态里同层插件的 peer，但 `nodeLinker: hoisted` + `auto-install-peers=false` 下，pnpm 只有在**足够多其他插件也声明它**时才会把它提升到 `<profile>/node_modules/`。实测：在只装本插件的干净 profile 里它**不在**，于是插件会在真正干活之前就以 `ERR_MODULE_NOT_FOUND` 加载失败——这对一个要给别人装的插件是最坏的失败形态；
+- **声明为 dependency**：pnpm 会在插件自己的 `node_modules/` 里再嵌一份，而该 profile 的 `.npmrc` 明确写着核心包只能来自 CLI 依赖树。
+
+`Config` 同时暴露 `defaults`，让 `cordis.patch.yml` 与 schema 的默认值能被测试强制对齐。
 
 ### 为什么不用 fd 3 双向句柄
 
@@ -291,7 +312,7 @@ npm test        # 53 个测试
 - `tests/runtime.test.js` —— **真子进程**测试（40 个）。每个执行用例都真的起一个 `python -I` 子进程，覆盖协议编解码、绑定桥接、并发、深度、字节上限、超时、中止、dispose；
 - `tests/preset.test.js` —— 预设与打包契约测试（13 个）。校验 `agent.cordis.yml` / `preset.yml` / `cordis.patch.yml` / `package.json` 的形状（行 id 唯一、group 带 realm、persona 用 `prefix`/`suffix`、patch 覆盖的是 `code-runtime`、patch 里的每个字段都存在于 schema 且值与默认一致、manifest 列出的文件都存在）。
 
-> 需要 `node_modules/` 中有 `@deepseek-ai/schemastery`、`yaml`，以及（用于 seam 一致性断言的）`@deepseek-ai/dsh-code-runtime`。前两者是普通依赖；seam 包**故意不是依赖**——profile 绝不能自己解析一份核心包，所以后端用 `ctx.provide('codeRuntime', ...)` 注册、完全不 import 它。检测到 seam 包时才运行一致性断言，检测不到就静默跳过。
+> 运行期只需要 Node 内置模块 + 一个 CPython 解释器。测试额外需要 `node_modules/` 中有 `yaml`，以及（用于 seam 一致性断言的）`@deepseek-ai/dsh-code-runtime`。seam 包**故意不是依赖**——profile 绝不能自己解析一份核心包，所以后端用 `ctx.provide('codeRuntime', ...)` 注册、完全不 import 它。检测到 seam 包时才运行一致性断言，检测不到就静默跳过。
 
 ## 限制
 

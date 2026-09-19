@@ -31,7 +31,7 @@
     }
   },
   "scripts": {
-    "check": "node --check lib/index.js && node --check lib/runtime.js && node --check lib/python-runtime.js && node --check lib/json-wire.js && node --check install.mjs && python -m py_compile py/dsh_bootstrap.py",
+    "check": "node --check lib/config-schema.js && node --check lib/index.js && node --check lib/runtime.js && node --check lib/python-runtime.js && node --check lib/json-wire.js && node --check install.mjs && python -m py_compile py/dsh_bootstrap.py",
     "test": "node --test \"tests/*.test.js\"",
     "prepublishOnly": "npm run check && npm test"
   },
@@ -62,14 +62,10 @@
     "node": ">=20"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh": ">=0.1.5-rc.1",
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/dsh": ">=0.1.5-rc.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh": {
-      "optional": true
-    },
-    "@deepseek-ai/schemastery": {
       "optional": true
     }
   }

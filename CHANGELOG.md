@@ -78,13 +78,18 @@ agent preset, distributed as a GitHub-installable dsh plugin.
   `codeRuntime` through `ctx.provide` and restates the seam's validation tables.
   A conformance test compares that restatement against the published exports
   whenever the seam package is resolvable, and skips when it is not.
-- **`@deepseek-ai/schemastery` is a peer dependency, not a dependency.** A
-  hoisted-layout profile already carries it at `<profile>/node_modules/`, one
-  level above the plugin, so ordinary upward resolution finds it — the same way
-  the ecosystem's other plugins at this layer declare it. Declaring it as a
-  dependency would make pnpm nest a second copy inside the plugin, which the
-  profile's `.npmrc` forbids for core packages. `peerDependenciesMeta.optional`
-  keeps `auto-install-peers=false` from reading it as a missing requirement.
+- **The plugin imports no npm package at all.** Config validation goes through
+  the [Standard Schema](https://standardschema.dev) interface cordis actually
+  consumes (`Config['~standard'].validate`), implemented in
+  `lib/config-schema.js`, so the plugin carries no runtime dependency and needs
+  no copy of a core package. A `schemastery` peer was rejected after measuring
+  it: with the profile's `nodeLinker: hoisted` and `auto-install-peers=false`,
+  pnpm only lifts `@deepseek-ai/schemastery` to `<profile>/node_modules` when
+  enough other plugins declare it, so on a clean profile the plugin would fail
+  with `ERR_MODULE_NOT_FOUND` before doing anything. Declaring it as a
+  dependency would nest a second copy, which the profile's `.npmrc` forbids for
+  core packages. The schemas also expose `defaults`, which lets a test force
+  `cordis.patch.yml` and the schema to agree on every default.
 - **The runtime row reuses the shipped `code-runtime` entry id.** Patching that
   id replaces the row's whole `name` and `config`, which is how one process ends
   up serving exactly one PTC language — `ctx.provide` would refuse a second

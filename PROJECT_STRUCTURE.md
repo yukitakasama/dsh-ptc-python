@@ -51,7 +51,8 @@ cordis.patch.yml
 | --- | --- | --- |
 | `lib/index.js` | ~99 | **主入口**（`main: lib/index.js`）。只有一个职责：把打包的预设幂等复制到 `${DSH_HOME:-~/.dsh}/.agent-presets/ptc-python/`。导出 `apply`、`Config`、`installPreset`、`userPresetRoot`。 |
 | `lib/runtime.js` | ~48 | `exports['./runtime']` 指向的入口。解析解释器路径、打印诊断、`new PythonCodeRuntime(...)`。是 patch 里 `code-runtime` 行的 `name`。 |
-| `lib/python-runtime.js` | ~911 | 后端本体。`Config`（schemastery schema）、`PythonCodeRuntime`（注册 `codeRuntime` 服务）、`validateChildFrame`（敌意帧校验/重建）、`OutputLedger`（字节账本）、`teardownChild`（进程树硬杀）、`defaultPythonPath`（解释器发现）、`SEAM_CONFORMANCE`（seam 一致性表）。 |
+| `lib/python-runtime.js` | ~1050 | 后端本体。`Config`（= `RuntimeConfig`，Standard Schema）、`PythonCodeRuntime`（注册 `codeRuntime` 服务）、`validateChildFrame`（敌意帧校验/重建）、`OutputLedger`（字节账本）、`teardownChild`（进程树硬杀）、`defaultPythonPath`（解释器发现）、`SEAM_CONFORMANCE`（seam 一致性表）。 |
+| `lib/config-schema.js` | ~200 | 两行各自的配置 schema，按 cordis 实际消费的 [Standard Schema](https://standardschema.dev) v1 接口（`~standard.validate`）手写，**不 import 任何包**。导出 `InstallerConfig`、`RuntimeConfig`（含 `defaults`）与 `makeSchema`。 |
 | `lib/json-wire.js` | ~202 | 无损 JSON 工具。全部**用显式栈迭代**：`jsonStringBytesUpTo`（不分配转义副本的字节扫描）、`encodeJsonPlain`、`checkDoneValue`（字节 + 数值无损性一次遍历）、`hasNonLosslessNumber`（每层一个游标，不按成员入栈）。 |
 
 > `lib/` 里的文件**就是产物**，没有 TS 源码、没有编译。改完直接生效（重启 dsh 后）。
@@ -133,11 +134,15 @@ cordis.patch.yml
 
 ### 想加一个运行时上限
 
-1. 在 `lib/python-runtime.js` 的 `Config` 里加字段（**必须带 `.default(...)`**）；
-2. 如果这个字段名会进 `Object.entries` 的正数校验循环，注意把非数值字段加进跳过列表（目前是 `pythonPath` / `isoFlags` / `protocol` / `maxComputeMs`）；
+1. 在 `lib/config-schema.js` 的 `RuntimeConfig` 表里加字段（**必须带 `.default(...)`**）；需要非负零值的字段用 `numberField(x, { allowZero: true })`，字节数用 `byteField(x)`；
+2. `lib/python-runtime.js` 构造器会对正数做一次冗余自检——把非数值字段（`pythonPath` / `isoFlags` / `protocol` / `maxComputeMs`）加进那个跳过列表；
 3. 在 `cordis.patch.yml` 的 `code-runtime` 行里显式写出该值与默认值；
 4. 在 `README.md` 的配置表里加一行；
-5. `tests/preset.test.js` 会断言 patch 里的字段都在 schema 里、且值等于 schema 默认——所以两处默认值必须一致。
+5. `tests/preset.test.js` 会断言 patch 里的字段都在 schema 里、且值等于 `RuntimeConfig.defaults`——所以两处默认值必须一致。
+
+### 想改配置校验语义
+
+改 `lib/config-schema.js`。注意 cordis 只认 `Config['~standard'].validate(raw)`：**必须同步**（返回 thenable 会被 cordis 直接抛错），成功返回 `{ value }`、失败返回 `{ issues: [{ message, path }] }`。默认值只对**缺失**（`undefined`）生效，显式传 `null` 会走类型错误分支——这是故意的，静默替换 `null` 会掩盖真实配置错误。
 
 ### 想改协议帧
 
@@ -171,9 +176,14 @@ npm test        # node --test "tests/*.test.js"
 
 **沙箱注意**：`tests/runtime.test.js` 会 `spawn` 带管道的子进程。在受限沙箱（只读或 workspace-write）下，`spawn` 会以 `EPERM` 失败——这是沙箱边界，不是代码缺陷。需要在能创建管道的环境下运行。
 
-**依赖注意**：`node_modules/` 需要有 `@deepseek-ai/schemastery`、`yaml`，以及（可选，供一致性断言用）`@deepseek-ai/dsh-code-runtime`。seam 包**故意不是依赖**：profile 绝不能自己解析一份核心包，所以后端用 `ctx.provide` 注册、完全不 import 它；一致性断言检测不到 seam 包时会静默跳过。
+**依赖注意**：**运行期零 npm 依赖**——插件只用 Node 内置模块，配置校验走 cordis 实际消费的 Standard Schema 接口（`lib/config-schema.js`）。测试额外需要 `node_modules/` 中有 `yaml`，以及（可选，供一致性断言用）`@deepseek-ai/dsh-code-runtime`。seam 包**故意不是依赖**：profile 绝不能自己解析一份核心包，所以后端用 `ctx.provide` 注册、完全不 import 它；一致性断言检测不到 seam 包时会静默跳过。
 
-**为什么 `@deepseek-ai/schemastery` 是 peer 而不是 dependency**：profile 用 `nodeLinker: hoisted` 安装，`@deepseek-ai/schemastery` 会被提升到 `<profile>/node_modules/` 一层，插件从 `<profile>/node_modules/@yukitakasama/dsh-ptc-python/` 向上查找就能解析到。声明成 `dependencies` 会让 pnpm 在插件自己的 `node_modules/` 里再嵌一份副本——而项目的 `.npmrc` 明确要求核心包只能来自 CLI 依赖树。生态里的同层插件（如 `@anionex/dsh-turn-rewind`）同样把它列为 peer。`peerDependenciesMeta.optional` 则避免 `auto-install-peers=false` 下被误判为缺失。
+**为什么不用 `@deepseek-ai/schemastery`**：cordis 的 `resolveConfig` 调的是 `runtime.Config['~standard'].validate(config)`，即 Standard Schema v1，所以 schema 不必来自 schema 库。而两个替代方案都更糟：
+
+- **peer**：`nodeLinker: hoisted` + `auto-install-peers=false` 下，pnpm 只有在足够多其他插件也声明它时才把它提升到 `<profile>/node_modules/`。实测在只装本插件的干净 profile 里它不在，插件会以 `ERR_MODULE_NOT_FOUND` 在加载期失败——对一个要给别人装的插件是最坏的失败形态；
+- **dependency**：pnpm 会在插件自己的 `node_modules/` 里嵌第二份，而该 profile 的 `.npmrc` 明确要求核心包只能来自 CLI 依赖树。
+
+改动 schema 时注意：`RuntimeConfig.defaults` 是默认值的**唯一真源**，`cordis.patch.yml` 只是复述，`tests/preset.test.js` 会强制两者一致。
 
 ---
 
@@ -187,3 +197,4 @@ npm test        # node --test "tests/*.test.js"
 6. **`teardownChild` 必须有兜底时限**。子进程可能杀不死，但一次运行/一次 dispose 绝不能悬住。
 7. **`lib/index.js` 与 `lib/runtime.js` 不能合并**。合并会导致同名服务被注册两次。
 8. **`isoFlags` 默认值在 schema 与 patch 里必须一致**（都是 `['-I']`），否则 `preset.test.js` 失败。
+9. **不要给插件加运行时 npm 依赖**。配置校验用 Standard Schema 自己实现就够了；加依赖会在干净 profile 上以 `ERR_MODULE_NOT_FOUND` 加载失败（原因见第四节「依赖注意」）。

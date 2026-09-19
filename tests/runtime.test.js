@@ -20,7 +20,7 @@ const SKIP = EXECUTABLE === undefined ? 'no Python interpreter on this host' : f
 
 /** Default caps for a test run; individual tests override what they exercise. */
 function caps(overrides = {}) {
-  return { ...Config({}), ...overrides }
+  return { ...Config.defaults, ...overrides }
 }
 
 /**

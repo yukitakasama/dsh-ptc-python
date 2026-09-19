@@ -175,17 +175,73 @@ test('the runtime row\'s config matches the runtime schema and its defaults', as
   const { Config } = await import('../lib/python-runtime.js')
   const patch = parse(readFileSync(join(PACKAGE_ROOT, 'cordis.patch.yml'), 'utf8'))
   const { config } = patch.find((row) => row.id === 'code-runtime')
-  // schemastery fills unlisted fields; every LISTED field must still be one the
-  // schema declares, or the loader would reject the row at boot.
-  const defaults = Config({})
+  // The schema carries the defaults; schemastery-style callers reach them
+  // through `defaults`, and cordis reaches validation through `~standard`.
+  const defaults = Config.defaults
   for (const key of Object.keys(config)) {
     assert.ok(key in defaults, `the patch sets unknown runtime config ${JSON.stringify(key)}`)
   }
-  // And every value the patch sets must already equal the schema default, so the
-  // two homes for a default cannot silently disagree.
+  // Every value the patch sets must already equal the schema default, so the two
+  // homes for a default cannot silently disagree.
   for (const [key, value] of Object.entries(config)) {
     assert.deepEqual(value, defaults[key], `patch value for ${key} differs from the schema default`)
   }
+  // And the schema must accept the patch verbatim, which is what the loader does.
+  const validated = Config['~standard'].validate(config)
+  assert.equal('issues' in validated, false, `the patch must validate: ${JSON.stringify(validated.issues)}`)
+  assert.deepEqual(validated.value, defaults)
+})
+
+test('both schemas implement the Standard Schema interface cordis calls', async () => {
+  const { Config: installerConfig } = await import('../lib/index.js')
+  const { Config: runtimeConfig } = await import('../lib/python-runtime.js')
+  for (const [label, schema] of [['installer', installerConfig], ['runtime', runtimeConfig]]) {
+    const standard = schema['~standard']
+    assert.equal(standard.version, 1, `${label} schema must declare Standard Schema v1`)
+    assert.equal(typeof standard.validate, 'function', `${label} schema must expose validate`)
+    const result = standard.validate({})
+    assert.equal('then' in result, false, `${label} validate must be synchronous`)
+    assert.equal('issues' in result, false, `${label} validate({}) must succeed on defaults`)
+    assert.equal(typeof result.value, 'object')
+  }
+})
+
+test('the schemas reject malformed config and fill absent keys with defaults', async () => {
+  const { RuntimeConfig: Config } = await import('../lib/config-schema.js')
+  const validate = (input) => Config['~standard'].validate(input)
+
+  assert.deepEqual(validate({}).value, Config.defaults)
+  assert.deepEqual(validate({ maxWallMs: 1000 }).value.maxWallMs, 1000)
+  assert.deepEqual(validate({ maxComputeMs: 0 }).value.maxComputeMs, 0, 'zero is the disabled-budget sentinel')
+  assert.equal(Object.hasOwn(validate({ maxWallMs: 1000, unknownKey: 1 }).value, 'unknownKey'), false, 'unknown keys are dropped')
+
+  // A present-but-wrong value is an issue naming the field, never a silent default.
+  for (const [input, field] of [
+    [{ maxWallMs: 0 }, 'maxWallMs'],
+    [{ maxWallMs: -1 }, 'maxWallMs'],
+    [{ maxWallMs: 'soon' }, 'maxWallMs'],
+    [{ maxOutputBytes: 1.5 }, 'maxOutputBytes'],
+    [{ maxComputeMs: -1 }, 'maxComputeMs'],
+    [{ isoFlags: 'not-a-list' }, 'isoFlags'],
+    [{ isoFlags: [1] }, 'isoFlags'],
+    [{ pythonPath: 7 }, 'pythonPath'],
+    [{ protocol: 'fd3' }, 'protocol'],
+    [{ maxValueBytes: null }, 'maxValueBytes'],
+  ]) {
+    const result = validate(input)
+    assert.ok('issues' in result, `${JSON.stringify(input)} must be refused`)
+    assert.deepEqual(result.issues[0].path, [field], `${JSON.stringify(input)} must name ${field}`)
+  }
+  assert.ok('issues' in validate(null), 'a non-object must be refused')
+  assert.ok('issues' in validate([]), 'an array must be refused')
+  assert.equal(Object.hasOwn(validate({ maxWallMs: 1, notAField: true }).value, 'notAField'), false)
+})
+
+test('the installer schema defaults force to false and rejects a non-boolean', async () => {
+  const { InstallerConfig } = await import('../lib/config-schema.js')
+  assert.deepEqual(InstallerConfig['~standard'].validate({}).value, { force: false })
+  assert.deepEqual(InstallerConfig['~standard'].validate({ force: true }).value, { force: true })
+  assert.ok('issues' in InstallerConfig['~standard'].validate({ force: 'yes' }))
 })
 
 test('the package manifest declares the bundle patch and the runtime subpath', () => {
