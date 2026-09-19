@@ -1,6 +1,6 @@
 {
   "name": "@yukitakasama/dsh-ptc-python",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DeepSeek Harness plugin: adds a Python Programmatic Tool Calling preset. Ships a CPython subprocess code-runtime backend plus the 'ptc-python' agent preset, so the model writes one Python program that calls its tools as `await tools.<name>(args)` bindings.",
   "type": "module",
   "main": "lib/index.js",

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.1.2] - 2026-09-19
+
+Documentation only. **No code or behavior change** — the runtime, the preset,
+and the bundle patch are byte-identical to 0.1.1. Published because the README is
+this plugin's safety interface: pinning `#v0.1.1` would otherwise hand a user the
+older text, where the install-time side effect was buried in the middle.
+
 ### Documented
 
 - **A "read this before installing" section now leads the README**, because the
@@ -89,7 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Do not install `#v0.1.0`.** That tag predates this fix and fails to load on a
 > clean profile. Use `v0.1.1` or later.
-
 ## [0.1.0] - 2026-09-19
 
 First release. Delivers a Python Programmatic Tool Calling mode for DeepSeek
@@ -190,6 +198,7 @@ agent preset, distributed as a GitHub-installable dsh plugin.
 - `-I` ignores user site-packages, so third-party imports need an explicit
   `isoFlags: []` or a system-level install.
 
-[Unreleased]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yukitakasama/dsh-ptc-python/releases/tag/v0.1.0
