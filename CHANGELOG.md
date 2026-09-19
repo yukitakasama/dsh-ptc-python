@@ -9,19 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documented
 
-- **Coexistence with the shipped TypeScript PTC mode is not possible, and this
-  is an upstream boundary rather than a plugin choice.** `@deepseek-ai/dsh-tools`
-  reads the runtime through its own registry context (`this.ctx.get("codeRuntime")`),
-  and that registry is mounted on the host plane where it cannot be re-mounted
-  per preset; `run_code` is a reserved name that cannot be registered or shadowed
-  per scope; and the runtime's `language` is a fixed property of whichever
-  implementation is loaded, read separately at prompt assembly and at execution.
-  Upstream's own note on `requireCodeRuntime` states this outright: the language
-  is deliberately not bound to a request, "harmless while one published backend
-  exists", with binding "deferred until a second backend ships". So one language
-  serves a deployment, and replacing the `code-runtime` row is the only
-  sanctioned mechanism. Native mode is unaffected either way: the plugin
-  replaces a runtime backend, not a presentation.
+- **A "read this before installing" section now leads the README**, because the
+  plugin's most important property is a side effect: it replaces the
+  `code-runtime` row, so a deployment that installs it loses the shipped
+  TypeScript PTC mode. Native mode is untouched. The section also states, in one
+  table, which of the surrounding gaps this plugin fills and which it cannot:
+  - **Cannot fix**: `run_code`'s language is not bound to the request, so
+    per-session TypeScript/Python coexistence is impossible without a
+    `dsh-tools` change; the subprocess runtime is isolation, not a security
+    boundary; and this backend is an independent implementation that inherits no
+    upstream stability or compatibility promise — upstream marks the CPython
+    subprocess path "experimental, private".
+  - **Fixes**: Python PTC could not work at all, because no Python runtime
+    backend was published.
+  - **Mitigates**: Windows has no POSIX resource limits and CPU metering needs an
+    external command; both degrade to the wall-clock ceiling with an explicit
+    warning rather than silently.
+- Documents the rollback path (removing the bundle un-stacks its patch layer, so
+  the base `code-runtime` row applies again) and names the two places a stale
+  registration can hide in a profile manifest.
+- **Records why per-session TypeScript/Python coexistence is upstream work.** The
+  blockers, each verified against the DSH source rather than the published `lib/`:
+  - `requireCodeTransport()` builds the `run_code` definition once
+    (`this.ptcTransport ??=`) from closures that carry no scope
+    (`requireRuntime: () => this.requireCodeRuntime(this.defaultMode)`,
+    `peekRuntime: () => this.ctx.get('codeRuntime')`), and `createRunCodeTool`
+    reads them only inside the schema getters. With
+    `CodeRuntime.language` declared `abstract readonly language: string`, the
+    model-visible `run_code` schema and SDK section are fixed to one language per
+    process.
+  - The registry that resolves the runtime is provided once by
+    `ToolRuntime extends Service` on the host plane, and its own docs state it
+    cannot move into a preset, so no scope sees a different runtime.
+  - `run_code` is a reserved name the registry refuses to let any scope register
+    or shadow.
+  - Execution is **not** the obstacle: `ToolExecutionInput.agent?: Agent`
+  already reaches `execute(args, exec)`, so per-agent dispatch at run time is
+  available today. What is missing is binding the language to the request at
+  schema generation — exactly what upstream's note defers ("Binding it is
+  deferred until a second backend ships"), and this backend is that second
+  backend.
+  - An isolate-realm runtime would be worse than no coexistence: the registry
+  sits outside the realm, so the prompt would render Python while execution went
+  to the TypeScript runtime.
 
 ## [0.1.1] - 2026-09-19
 

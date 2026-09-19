@@ -4,9 +4,44 @@ DeepSeek Harness 插件：一个 **Python 版 PTC（Programmatic Tool Calling）
 
 装上它之后，模型不再逐个调用工具，而是**只调用 `run_code`**：一次写出一整段 Python 程序，把工具当作 `await tools.<name>(args)` 绑定函数调用，只有程序 `print` 出来的行和 `return` 的值回到对话里。中间的工具调用、循环、异常处理全部留在子进程内部。
 
-> 适配 **dsh 0.1.5-rc.1**。分布方式为 **GitHub 直装**（无需 npm 发布）。
+> 适配 **dsh 0.1.5-rc.1**。通过 **GitHub 直装**分发（未发布到 npm）。
 
-English | [中文](README.md)
+---
+
+## ⚠️ 装之前必须知道
+
+### 1. 装上之后，TypeScript 版 PTC 就没了（全局副作用）
+
+`ctx.codeRuntime` 是**宿主平面单例，一门语言一次部署**。本插件通过替换 `code-runtime` 行来安装 Python 后端，所以：
+
+| 会话 | 装之前 | 装之后 |
+| --- | --- | --- |
+| 原生模式 | 正常 | **不受影响** |
+| PTC（TypeScript 版） | 可用 | **不可用**（全局变成 Python） |
+| PTC Python | 无此模式 | 可用 |
+
+**受影响的只有 PTC 这一种呈现方式**，原生会话完全不受影响。但如果你正在用 TS 版 PTC，装本插件会把它换掉。回退方法见[卸载](#方式一github-直装推荐)。
+
+这不是实现取巧，是上游目前的设计边界，证据与代码位置见[与官方模式的关系](#与官方模式的关系)。
+
+### 2. 官方现状：哪些是本插件补的，哪些补不了
+
+以下几件事属于**官方核心目前的实现状态**。列出来是为了让你清楚本插件的边界在哪——尤其是**不要指望在插件层解决语言共存**：
+
+| 官方状态 | 后果 | 本插件能否补上 |
+| --- | --- | --- |
+| **`run_code` 的语言未绑定到请求** | 无法「TS 会话用 TS、Python 会话用 Python」共存 | ❌ **补不了**，需要改 `dsh-tools`。上游注释写明此事 *"deferred until a second backend ships"*——本插件就是那个第二个后端 |
+| **Python 运行时后端未随官方发布** | Python PTC 本来无法使用 | ✅ **本插件补上了**（这正是它存在的唯一理由） |
+| **子进程型运行时没有消费级隔离** | 本插件的 `isolation: 'process'` 是**隔离不是安全边界**：程序以当前用户身份运行，能读写你能读写的一切 | ❌ 超出范围。要真沙箱请用上游的 E2B 路线 |
+| **CPython 子进程路径被标为 *"experimental, private"*** | 本插件是**独立实现**，不继承上游任何稳定性或兼容性承诺；上游接口变更时本插件需要跟进 | ❌ 自行承担 |
+| **Windows 上无 POSIX 资源限制；CPU 计量依赖外部命令** | `RLIMIT_CPU` / `RLIMIT_AS` 在 Windows 无效；`maxComputeMs` 可能取不到进程 CPU 时间 | ⚠️ 部分：降级为墙钟上限 + 明确告警，**不静默** |
+
+### 3. 其他风险
+
+- **插件冲突**：若另一个插件也替换 `code-runtime` 行，两者冲突（**后加载的生效**），无解。装之前请确认没有同类插件。
+- **`pip` 默认不可用**：`-I` 会忽略用户 site-packages。需要第三方库要么改 `isoFlags`（去掉隔离，自己承担），要么装到系统 Python。
+- **子进程不是沙箱**：程序能做当前用户能做的任何事。不要把它当安全边界来运行不可信代码。
+- **只适配 0.1.5-rc.1**：PTC 呈现行是 `>= 0.1.5-rc.1` 才有的。其他版本可能挂载失败（会以明确错误失败，不会静默）。
 
 ---
 
@@ -81,6 +116,9 @@ DSH 的 PTC 模式是一套「工具呈现方式」，不是某个语言专属�
 
 ### 方式一：GitHub 直装（推荐）
 
+> **这一步会使整个部署的 PTC 呈现方式改用 Python**，TS 版 PTC 随之下线（原生模式不受影响）。
+> 如果你还在用 TS 版 PTC，请先读完[装之前必须知道](#-装之前必须知道)。
+
 ```bash
 dsh plugin --profile web add github:yukitakasama/dsh-ptc-python
 ```
@@ -95,6 +133,21 @@ dsh plugin --profile web add github:yukitakasama/dsh-ptc-python#v0.1.1
 
 > 不要锁 `#v0.1.0`：那个 tag 早于 0.1.1 的加载失败修复，在干净 profile 上会以
 > `ERR_MODULE_NOT_FOUND` 起不来。用 `v0.1.1` 或更新。
+
+**卸载 / 回退到 TS 版 PTC**：
+
+```bash
+dsh plugin --profile web remove @yukitakasama/dsh-ptc-python
+```
+
+回退能成立是因为 bundle 就是**叠加的补丁层**：行被替换而不是被修改，所以本插件的层一旦不参与叠加，`code-runtime` 行就回到 web bundle 原本的 `@deepseek-ai/dsh-code-runtime-worker-thread`。
+
+卸载后**请确认这两处都清干净了**（不同 dsh 版本对 `remove` 的清理范围可能不同）：
+
+1. `<profile>/package.json` 的 `dependencies` 里没有 `@yukitakasama/dsh-ptc-python`；
+2. 同一个 `package.json` 的 `dsh.profile.bundles` 数组里也没有它——**若残留，启动会因找不到该 bundle 而失败**，手动删掉即可。
+
+预设文件会留在 `${DSH_HOME}/.agent-presets/ptc-python/`（插件不负责删自己的安装产物），不需要就手动删除。
 
 **更新**：
 
@@ -374,11 +427,12 @@ private requireCodeTransport(): ToolDefinition {
 
 ## 限制
 
-- **一个进程只有一门语言**：`ctx.codeRuntime` 是宿主平面单例，本插件通过**替换** `code-runtime` 行来安装 Python 后端。装了本插件，所有 PTC 模式会话都用 Python；不能同时提供一个 TypeScript PTC 预设（原因与上游代码证据见[与官方模式的关系](#与官方模式的关系)）；
+**风险类限制（语言共存、沙箱、依赖、冲突、版本）已列在开头的[装之前必须知道](#-装之前必须知道)**，此处只列运行行为本身的边界：
+
 - **CPU 计量依赖外部命令**：Windows 需要 `tasklist`、POSIX 需要 `ps`。取不到进程 CPU 时间时只告警一次，运行仍由 `maxWallMs` 兜底；
 - **POSIX 资源限制在 Windows 无效**：`resource` 模块不存在，`cpuSeconds` / `addressSpaceBytes` 被忽略（已在子进程里显式跳过并注释）；
 - **程序的 stdin 是立即 EOF**：子进程装上了一个立刻返回 EOF 的 `sys.stdin`，这样 `input()` 会立刻抛 `EOFError` 而不是挂到墙钟上限。程序要接触外部世界请走工具绑定；
-- **`pip` 不可用只是没有第三方包**：`-I` 会忽略用户 site-packages。需要第三方库时，要么把 `isoFlags` 改成 `[]`（去掉隔离，自己承担后果），要么在系统 Python 里装；
+- **整数超出 2^53 会按最近的 double 穿越**：帧里携带的是精确十进制数字，但 JS `JSON.parse` 之后只能保留 double 精度。这是能力 seam 的边界，不是本插件的取舍；
 - **中间值只存在于执行局部**：工具返回的中间结果无法从会话日志重建。只有 `run_code` 的外层结果会进入对话与日志。
 
 ## 项目结构
