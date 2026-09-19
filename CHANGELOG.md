@@ -9,11 +9,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Nothing yet.
 
+## [0.1.1] - 2026-09-19
+
+### Fixed
+
+- **The plugin could fail to load on a clean profile.** `lib/index.js` and
+  `lib/python-runtime.js` imported `@deepseek-ai/schemastery` for config
+  validation. That package is a peer of the ecosystem's profile plugins, and with
+  the profile's `nodeLinker: hoisted` plus `auto-install-peers=false`, pnpm only
+  lifts it to `<profile>/node_modules` when enough other plugins declare it.
+  Measured on a profile containing only this plugin, it was absent and the
+  plugin died with `ERR_MODULE_NOT_FOUND` before it could install the preset or
+  mount the runtime.
+
+  Config validation now implements the [Standard Schema](https://standardschema.dev)
+  v1 interface cordis actually consumes (`Config['~standard'].validate`) in the
+  new `lib/config-schema.js`, so the plugin imports **no npm package at all** and
+  has no runtime dependency. Declaring `schemastery` as a dependency was rejected
+  as the alternative: it would nest a second copy, which the profile's `.npmrc`
+  forbids for core packages.
+
+### Added
+
+- `lib/config-schema.js`, exporting `InstallerConfig`, `RuntimeConfig` (with a
+  `defaults` record that is the single source of truth for every default), and
+  the `makeSchema` builder.
+- Preset tests pinning the Standard Schema contract (synchronous `validate`,
+  `{ value }` on success, `{ issues }` with a field path on failure), the
+  absent-key defaulting rule, and the rejection of malformed values.
+
+### Changed
+
+- `Config` is now a Standard Schema object, not a callable schema. Callers that
+  need the defaults read `Config.defaults`.
+
+> **Do not install `#v0.1.0`.** That tag predates this fix and fails to load on a
+> clean profile. Use `v0.1.1` or later.
+
 ## [0.1.0] - 2026-09-19
 
 First release. Delivers a Python Programmatic Tool Calling mode for DeepSeek
 Harness 0.1.5-rc.1: a CPython subprocess code runtime plus the `ptc-python`
 agent preset, distributed as a GitHub-installable dsh plugin.
+
+> Superseded by 0.1.1, which removes the load-time dependency on
+> `@deepseek-ai/schemastery`. Kept for history; not recommended for install.
 
 ### Added
 
@@ -106,5 +146,6 @@ agent preset, distributed as a GitHub-installable dsh plugin.
 - `-I` ignores user site-packages, so third-party imports need an explicit
   `isoFlags: []` or a system-level install.
 
-[Unreleased]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/yukitakasama/dsh-ptc-python/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yukitakasama/dsh-ptc-python/releases/tag/v0.1.0
