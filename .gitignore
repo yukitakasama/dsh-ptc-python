@@ -2,6 +2,11 @@
 node_modules/
 *.log
 
+# Scratch output from ad-hoc verification runs. Real test output belongs in the
+# test runner's own stream; anything written to a tmp-* file is developer
+# scratch and must not be committed.
+tmp-*
+
 # Python bytecode caches
 __pycache__/
 *.py[cod]
